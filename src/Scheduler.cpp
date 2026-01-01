@@ -66,7 +66,7 @@ void Scheduler::scheduleEventUI() {
         delete e; return;
     }
 
-    std::cout << "Priority (1-3): "; std::cin >> e->priority;
+    std::cout << "Priority (1 (Lowest) - 3 (Highest)): \n1. Workshop \n2. Competition \n3. Class \nEnter priority: "; std::cin >> e->priority;
     std::cout << "Participants: "; std::cin >> e->maxParticipants;
     std::cout << "Room ID: "; std::cin >> e->resourceID;
 
@@ -291,7 +291,7 @@ void Scheduler::registerParticipantUI() {
     std::cout << "Enter Name: ";
     std::cin.ignore();
     std::getline(std::cin, userName);
-    std::cout << "Enter Unique ID (e.g., Email/Seat#): ";
+    std::cout << "Enter your ID : ";
     std::getline(std::cin, userId);
 
     Event* target = findEventByID(eventId);
