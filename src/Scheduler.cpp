@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
+#include <set>
 
 Scheduler::Scheduler() {
     ResourceInfo r1; r1.resourceID = "R1"; r1.name = "Room 1"; r1.capacity = 200;
@@ -450,7 +451,6 @@ void Scheduler::deleteRoomUI() {
     std::cout << "Room " << id << " deleted successfully.\n";
 }
 
-#include <set>
 
 void Scheduler::printUtilizationReportUI() const {
     std::string targetDate;
