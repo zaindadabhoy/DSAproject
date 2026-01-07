@@ -1,181 +1,551 @@
 #include "Scheduler.h"
+#include "PriorityQueue.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <algorithm>
-#include <set>
+#include <iomanip>
 
-Scheduler::Scheduler() {
-    ResourceInfo r1; r1.resourceID = "R1"; r1.name = "Room 1"; r1.capacity = 200;
-    ResourceInfo r2; r2.resourceID = "R2"; r2.name = "Room 2"; r2.capacity = 800;
-    ResourceInfo r3; r3.resourceID = "R3"; r3.name = "Room 3"; r3.capacity = 1500;
+Scheduler::Scheduler()
+{
+    ResourceInfo r1;
+    r1.resourceID = "R1";
+    r1.name = "Room 1";
+    r1.capacity = 200;
+    ResourceInfo r2;
+    r2.resourceID = "R2";
+    r2.name = "Room 2";
+    r2.capacity = 800;
+    ResourceInfo r3;
+    r3.resourceID = "R3";
+    r3.name = "Room 3";
+    r3.capacity = 1500;
     resources[r1.resourceID] = r1;
     resources[r2.resourceID] = r2;
     resources[r3.resourceID] = r3;
+
+    nextEventID = 1000;
+    nextParticipantID = 5000;
 }
 
 Scheduler::~Scheduler() { clearAllEvents(); }
 
-int Scheduler::timeToMinutes(std::string t) const {
-    if (t.length() < 5) return 0;
+int Scheduler::timeToMinutes(std::string t) const
+{
+    if (t.length() < 5)
+        return 0;
     int h = std::stoi(t.substr(0, 2));
     int m = std::stoi(t.substr(3, 2));
     return (h * 60) + m;
 }
 
-std::string Scheduler::minutesToTime(int m) const {
-	if (m == 1440) return "24:00";
+std::string Scheduler::minutesToTime(int m) const
+{
+    if (m >= 1440)
+        return "24:00";
     int hours = (m / 60) % 24;
     int mins = m % 60;
-    char buf[6];
-    sprintf(buf, "%02d:%02d", hours, mins);
-    return std::string(buf);
+    std::string res = "";
+    if (hours < 10)
+        res += "0";
+    res += std::to_string(hours) + ":";
+    if (mins < 10)
+        res += "0";
+    res += std::to_string(mins);
+    return res;
 }
 
-int Scheduler::findGap(ResourceInfo& room, std::string date, int duration, int preferredStart) const {
-    for (int start = preferredStart; start <= (1440 - duration); start += 15) {
-        Event tmp; tmp.date = date; tmp.startMinutes = start; tmp.endMinutes = start + duration;
-        std::vector<Event*> overlaps = room.tree.findOverlaps(&tmp);
+int Scheduler::findGap(ResourceInfo &room, std::string date, int duration, int preferredStart) const
+{
+    for (int start = preferredStart; start <= (1440 - duration); start += 15)
+    {
+        Event tmp;
+        tmp.date = date;
+        tmp.startMinutes = start;
+        tmp.endMinutes = start + duration;
+        std::vector<Event *> overlaps = room.tree.findOverlaps(&tmp);
         bool conflict = false;
-        for (auto ov : overlaps) if (ov->date == date) { conflict = true; break; }
-        if (!conflict) return start;
+        for (auto ov : overlaps)
+            if (ov->date == date)
+            {
+                conflict = true;
+                break;
+            }
+        if (!conflict)
+            return start;
     }
-    for (int start = 0; start < preferredStart; start += 15) {
-        Event tmp; tmp.date = date; tmp.startMinutes = start; tmp.endMinutes = start + duration;
-        std::vector<Event*> overlaps = room.tree.findOverlaps(&tmp);
+    for (int start = 0; start < preferredStart; start += 15)
+    {
+        Event tmp;
+        tmp.date = date;
+        tmp.startMinutes = start;
+        tmp.endMinutes = start + duration;
+        std::vector<Event *> overlaps = room.tree.findOverlaps(&tmp);
         bool conflict = false;
-        for (auto ov : overlaps) if (ov->date == date) { conflict = true; break; }
-        if (!conflict) return start;
+        for (auto ov : overlaps)
+            if (ov->date == date)
+            {
+                conflict = true;
+                break;
+            }
+        if (!conflict)
+            return start;
     }
     return -1;
 }
 
-void Scheduler::scheduleEventUI() {
+void Scheduler::scheduleEventUI()
+{
     printRooms();
-    Event* e = new Event();
-    std::cout << "Event ID: "; std::cin >> e->eventID; std::cin.ignore();
-    std::cout << "Name: "; std::getline(std::cin, e->name);
-    std::cout << "Date (YYYY-MM-DD): "; std::getline(std::cin, e->date);
+
+    std::string newID = "EVT-" + std::to_string(nextEventID);
+    nextEventID++;
+
+    Event *e = new Event();
+    e->eventID = newID;
+
+    std::cin.ignore();
+    std::cout << "Name: ";
+    std::getline(std::cin, e->name);
+    std::cout << "Date (YYYY-MM-DD): ";
+    std::getline(std::cin, e->date);
     std::string sT, eT;
-    std::cout << "Start (HH:MM): "; std::cin >> sT;
-    std::cout << "End (HH:MM): "; std::cin >> eT;
+    std::cout << "Start (HH:MM): ";
+    std::cin >> sT;
+    std::cout << "End (HH:MM): ";
+    std::cin >> eT;
     e->startMinutes = timeToMinutes(sT);
     e->endMinutes = timeToMinutes(eT);
 
-    if (e->startMinutes >= e->endMinutes) {
-        std::cout << "Error: Start time must be before end time. (Events cannot cross midnight).\n";
-        delete e; return;
+    if (e->startMinutes >= e->endMinutes)
+    {
+        std::cout << "Error: Invalid time range.\n";
+        delete e;
+        return;
     }
 
-    std::cout << "Priority (1 (Lowest) - 3 (Highest)): \n1. Workshop \n2. Competition \n3. Class \nEnter priority: "; std::cin >> e->priority;
-    std::cout << "Participants: "; std::cin >> e->maxParticipants;
-    std::cout << "Room ID: "; std::cin >> e->resourceID;
+    std::cout << "Priority (1-3): ";
+    std::cin >> e->priority;
+    std::cout << "Capacity: ";
+    std::cin >> e->maxParticipants;
+    std::cout << "Room ID: ";
+    std::cin >> e->resourceID;
 
-    if (resources.find(e->resourceID) == resources.end()) {
-        std::cout << "Room not found.\n";
-        delete e; return;
+    if (resources.find(e->resourceID) == resources.end())
+    {
+        std::cout << "Error: Room ID '" << e->resourceID << "' does not exist.\n";
+        delete e;
+        return;
     }
-    ResourceInfo& room = resources[e->resourceID];
 
-    std::vector<Event*> rawOverlaps = room.tree.findOverlaps(e);
-    std::vector<Event*> sameDayConflicts;
-    for (size_t i = 0; i < rawOverlaps.size(); i++) {
-        if (rawOverlaps[i]->date == e->date) {
+    ResourceInfo &room = resources[e->resourceID];
+    std::vector<Event *> rawOverlaps = room.tree.findOverlaps(e);
+    std::vector<Event *> sameDayConflicts;
+    for (size_t i = 0; i < rawOverlaps.size(); i++)
+    {
+        if (rawOverlaps[i]->date == e->date)
             sameDayConflicts.push_back(rawOverlaps[i]);
-        }
     }
 
-    if (sameDayConflicts.empty()) {
+    if (sameDayConflicts.empty())
+    {
         room.tree.insert(e);
         ownedEvents.push_back(e);
-        undoStack.push(e);
-        std::cout << "Scheduled successfully.\n";
-    } else {
+        undoStack.push({ACTION_ADD, e});
+        std::cout << "Event scheduled successfully.\n";
+    }
+    else
+    {
         bool canPreemptAll = true;
-        for (size_t i = 0; i < sameDayConflicts.size(); i++) {
-            if (sameDayConflicts[i]->priority >= e->priority) {
+        for (size_t i = 0; i < sameDayConflicts.size(); i++)
+        {
+            if (sameDayConflicts[i]->priority >= e->priority)
+            {
                 canPreemptAll = false;
                 break;
             }
         }
 
-        if (canPreemptAll) {
-            std::cout << "Conflict detected! Your priority is higher. Preempting existing events...\n";
-            std::priority_queue<Event*, std::vector<Event*>, ComparePriority> preemptionHeap;
-            
-            for (size_t i = 0; i < sameDayConflicts.size(); i++) {
+        if (canPreemptAll)
+        {
+            std::cout << "Higher priority: Bumping existing events...\n";
+            for (size_t i = 0; i < sameDayConflicts.size(); i++)
                 room.tree.remove(sameDayConflicts[i]);
-                preemptionHeap.push(sameDayConflicts[i]);
-            }
 
             room.tree.insert(e);
             ownedEvents.push_back(e);
-            undoStack.push(e);
+            undoStack.push({ACTION_ADD, e});
 
-            while (!preemptionHeap.empty()) {
-                Event* bumped = preemptionHeap.top();
-                preemptionHeap.pop();
+            EventMaxHeap bumpHeap;
+            for (size_t i = 0; i < sameDayConflicts.size(); i++)
+                bumpHeap.push(sameDayConflicts[i]);
+
+            while (!bumpHeap.empty())
+            {
+                Event *bumped = bumpHeap.top();
+                bumpHeap.pop();
                 int dur = bumped->endMinutes - bumped->startMinutes;
                 int gap = findGap(room, bumped->date, dur, e->endMinutes);
-                if (gap != -1) {
+                if (gap != -1)
+                {
                     bumped->startMinutes = gap;
                     bumped->endMinutes = gap + dur;
                     room.tree.insert(bumped);
-                    std::cout << ">> Event [" << bumped->eventID << "] bumped to " << minutesToTime(gap) << "\n";
-                } else {
-                    std::cout << ">> Event [" << bumped->eventID << "] could not be rescheduled today.\n";
+                    std::cout << ">> " << bumped->eventID << " moved to " << minutesToTime(gap) << "\n";
+                }
+                else
+                {
+                    std::cout << ">> " << bumped->eventID << " could not be rescheduled (no gaps).\n";
                 }
             }
-        } else {
-            std::cout << "Conflict with higher/equal priority event!\n";
+        }
+        else
+        {
+            std::cout << "Conflict with higher priority event. Seeking alternative...\n";
             int dur = e->endMinutes - e->startMinutes;
             int alt = findGap(room, e->date, dur, e->endMinutes);
-            if (alt != -1) {
-                std::cout << "Suggested alternative: " << minutesToTime(alt) << ". Use? (y/n): ";
-                char choice; std::cin >> choice;
-                if (choice == 'y' || choice == 'Y') {
+            if (alt != -1)
+            {
+                std::cout << "Suggested alternative: " << minutesToTime(alt) << ". Accept? (y/n): ";
+                char c;
+                std::cin >> c;
+                if (c == 'y' || c == 'Y')
+                {
                     e->startMinutes = alt;
                     e->endMinutes = alt + dur;
                     room.tree.insert(e);
                     ownedEvents.push_back(e);
-                    undoStack.push(e);
-                    std::cout << "Scheduled at alternative time.\n";
-                } else {
-                    delete e;
+                    undoStack.push({ACTION_ADD, e});
                 }
-            } else {
-                std::cout << "No slots left today.\n";
+                else
+                    delete e;
+            }
+            else
+            {
+                std::cout << "No slots available for this date.\n";
                 delete e;
             }
         }
     }
 }
 
-void Scheduler::clearAllEvents() {
-    std::unordered_map<std::string, ResourceInfo>::iterator it;
-    for (it = resources.begin(); it != resources.end(); ++it) {
-        it->second.tree.root = NULL;
+void Scheduler::deleteEventUI()
+{
+    std::string id;
+    std::cout << "Enter Event ID to delete: ";
+    std::cin >> id;
+    Event *e = findEventByID(id);
+    if (!e)
+    {
+        std::cout << "Event ID not found.\n";
+        return;
     }
-    for (size_t i = 0; i < ownedEvents.size(); ++i) delete ownedEvents[i];
-    ownedEvents.clear();
-    while(!undoStack.empty()) undoStack.pop();
-    while(!redoStack.empty()) redoStack.pop();
+
+    if (resources.count(e->resourceID))
+        resources[e->resourceID].tree.remove(e);
+    undoStack.push({ACTION_DELETE, e});
+    while (!redoStack.empty())
+        redoStack.pop();
+    std::cout << "Event deleted successfully.\n";
 }
 
-std::vector<std::string> Scheduler::split(const std::string& s, char delim) const {
-    std::vector<std::string> parts; std::string cur;
-    for (size_t i = 0; i < s.length(); i++) {
-        if (s[i] == delim) { parts.push_back(cur); cur = ""; }
-        else cur += s[i];
+void Scheduler::registerParticipantUI()
+{
+    std::string eid, name;
+    std::cout << "Enter Event ID to register for: ";
+    std::cin >> eid;
+
+    Event *t = findEventByID(eid);
+    if (t == NULL)
+    {
+        std::cout << "Error: Event '" << eid << "' does not exist.\n";
+        return;
     }
-    parts.push_back(cur); return parts;
+
+    std::cout << "Participant Name: ";
+    std::cin.ignore();
+    std::getline(std::cin, name);
+
+    std::string newPID = "P-" + std::to_string(nextParticipantID);
+    nextParticipantID++;
+
+    Participant p;
+    p.name = name;
+    p.pID = newPID;
+
+    if (t->participantQueue.size() < (size_t)t->maxParticipants)
+    {
+        t->participantQueue.push(p);
+        std::cout << "Registered! Your System ID is: " << p.pID << "\n";
+    }
+    else
+    {
+        t->waitlistQueue.push(p);
+        std::cout << "Waitlisted. Your System ID is: " << p.pID << "\n";
+    }
 }
 
-std::string Scheduler::joinQueue(std::queue<Participant> q) const {
+void Scheduler::withdrawParticipantUI()
+{
+    std::string eid, uid;
+    std::cout << "Enter Event ID: ";
+    std::cin >> eid;
+
+    Event *t = findEventByID(eid);
+    if (t == NULL)
+    {
+        std::cout << "Error: Event ID '" << eid << "' not found.\n";
+        return;
+    }
+
+    std::cout << "Enter Participant ID to withdraw: ";
+    std::cin >> uid;
+
+    std::queue<Participant> temp;
+    bool found = false;
+
+    while (!t->participantQueue.empty())
+    {
+        Participant p = t->participantQueue.front();
+        t->participantQueue.pop();
+        if (p.pID == uid && !found)
+            found = true;
+        else
+            temp.push(p);
+    }
+    t->participantQueue = temp;
+
+    if (!found)
+    {
+        std::queue<Participant> wTemp;
+        while (!t->waitlistQueue.empty())
+        {
+            Participant p = t->waitlistQueue.front();
+            t->waitlistQueue.pop();
+            if (p.pID == uid && !found)
+                found = true;
+            else
+                wTemp.push(p);
+        }
+        t->waitlistQueue = wTemp;
+    }
+    else
+    {
+        if (!t->waitlistQueue.empty())
+        {
+            t->participantQueue.push(t->waitlistQueue.front());
+            t->waitlistQueue.pop();
+        }
+    }
+
+    if (found)
+    {
+        std::cout << "ID " << uid << " has been successfully withdrawn.\n";
+    }
+    else
+    {
+        std::cout << "Error: Participant ID '" << uid << "' does not exist for this event.\n";
+    }
+}
+
+void Scheduler::addRoomUI()
+{
+    std::string id, name;
+    int cap;
+    std::cout << "Room ID: ";
+    std::cin >> id;
+    if (resources.count(id))
+    {
+        std::cout << "Exists.\n";
+        return;
+    }
+    std::cout << "Name: ";
+    std::cin.ignore();
+    std::getline(std::cin, name);
+    std::cout << "Capacity: ";
+    std::cin >> cap;
+    resources[id] = {id, name, cap, IntervalTree()};
+}
+
+void Scheduler::deleteRoomUI()
+{
+    std::string id;
+    std::cout << "Room ID: ";
+    std::cin >> id;
+    if (!resources.count(id))
+        return;
+    for (auto e : ownedEvents)
+        if (e->resourceID == id)
+        {
+            std::cout << "Has events.\n";
+            return;
+        }
+    resources.erase(id);
+}
+
+void Scheduler::printUtilizationReportUI() const
+{
+    std::string targetDate;
+    std::cout << "Enter Date (YYYY-MM-DD) or 'all': ";
+    std::cin >> targetDate;
+
+    std::cout << "\n============================================================\n";
+    std::cout << "                ROOM UTILIZATION REPORT (" << targetDate << ")\n";
+    std::cout << "============================================================\n";
+    std::cout << std::left << std::setw(10) << "Room ID"
+              << "| " << std::setw(12) << "Time Util"
+              << "| " << std::setw(12) << "Avg People"
+              << "| " << std::setw(10) << "Cap Util" << "\n";
+    std::cout << "----------|-------------|-------------|-------------\n";
+
+    double totalCampusMins = 0;
+    int totalCampusEvents = 0;
+
+    for (std::unordered_map<std::string, ResourceInfo>::const_iterator it = resources.begin(); it != resources.end(); ++it)
+    {
+        const ResourceInfo &room = it->second;
+
+        double roomBusyMins = 0;
+        double totalAttendees = 0;
+        int eventCount = 0;
+
+        std::vector<std::string> datesSeen;
+
+        std::vector<Event *> evs = room.tree.getAllEventsSorted();
+        for (size_t i = 0; i < evs.size(); ++i)
+        {
+            Event *e = evs[i];
+
+            if (targetDate == "all" || e->date == targetDate)
+            {
+                roomBusyMins += (e->endMinutes - e->startMinutes);
+                totalAttendees += (double)e->participantQueue.size();
+                eventCount++;
+
+                bool alreadySeen = false;
+                for (size_t j = 0; j < datesSeen.size(); ++j)
+                {
+                    if (datesSeen[j] == e->date)
+                    {
+                        alreadySeen = true;
+                        break;
+                    }
+                }
+                if (!alreadySeen)
+                    datesSeen.push_back(e->date);
+            }
+        }
+
+        double timeUtil = 0.0, capUtil = 0.0, avgOcc = 0.0;
+
+        double availableMins = 1440.0;
+        if (targetDate == "all")
+        {
+            availableMins = (datesSeen.size() > 0) ? (datesSeen.size() * 1440.0) : 1440.0;
+        }
+
+        if (eventCount > 0)
+        {
+            timeUtil = (roomBusyMins / availableMins) * 100.0;
+            avgOcc = totalAttendees / (double)eventCount;
+            capUtil = (avgOcc / (double)room.capacity) * 100.0;
+
+            if (timeUtil > 100.0)
+                timeUtil = 100.0;
+        }
+
+        std::cout << std::left << std::setw(10) << room.resourceID << "| "
+                  << std::fixed << std::setprecision(1) << std::setw(10) << timeUtil << "% | "
+                  << std::setw(11) << avgOcc << " | "
+                  << std::setw(9) << capUtil << "%\n";
+
+        totalCampusMins += roomBusyMins;
+        totalCampusEvents += eventCount;
+    }
+    std::cout << "============================================================\n";
+    std::cout << " Total Events Managed: " << totalCampusEvents << "\n";
+    std::cout << " Total Active Minutes: " << totalCampusMins << "\n";
+    std::cout << "============================================================\n";
+}
+
+void Scheduler::undo()
+{
+    if (undoStack.empty())
+    {
+        std::cout << "Nothing to undo.\n";
+        return;
+    }
+    ActionRecord record = undoStack.top();
+    undoStack.pop();
+    redoStack.push(record);
+
+    if (record.type == ACTION_ADD)
+    {
+        if (resources.count(record.event->resourceID))
+            resources[record.event->resourceID].tree.remove(record.event);
+        std::cout << "Undo: Removed " << record.event->name << ".\n";
+    }
+    else
+    {
+        if (resources.count(record.event->resourceID))
+            resources[record.event->resourceID].tree.insert(record.event);
+        std::cout << "Undo: Restored " << record.event->name << ".\n";
+    }
+}
+
+void Scheduler::redo()
+{
+    if (redoStack.empty())
+    {
+        std::cout << "Nothing to redo.\n";
+        return;
+    }
+    ActionRecord record = redoStack.top();
+    redoStack.pop();
+    undoStack.push(record);
+
+    if (record.type == ACTION_ADD)
+    {
+        if (resources.count(record.event->resourceID))
+            resources[record.event->resourceID].tree.insert(record.event);
+        std::cout << "Redo: Restored " << record.event->name << ".\n";
+    }
+    else
+    {
+        if (resources.count(record.event->resourceID))
+            resources[record.event->resourceID].tree.remove(record.event);
+        std::cout << "Redo: Deleted " << record.event->name << " again.\n";
+    }
+}
+
+std::vector<std::string> Scheduler::split(const std::string &s, char delim) const
+{
+    std::vector<std::string> parts;
+    std::string cur;
+    for (size_t i = 0; i < s.length(); i++)
+    {
+        if (s[i] == delim)
+        {
+            parts.push_back(cur);
+            cur = "";
+        }
+        else
+        {
+            cur += s[i];
+        }
+    }
+    parts.push_back(cur);
+    return parts;
+}
+
+std::string Scheduler::joinQueue(std::queue<Participant> q) const
+{
     std::string res = "";
     bool f = true;
-    while(!q.empty()) {
-        if(!f) res += ",";
+    while (!q.empty())
+    {
+        if (!f)
+            res += ",";
         res += q.front().name + ":" + q.front().pID;
         q.pop();
         f = false;
@@ -183,13 +553,17 @@ std::string Scheduler::joinQueue(std::queue<Participant> q) const {
     return res;
 }
 
-void Scheduler::loadQueue(std::queue<Participant>& q, std::string csv) {
-    if (csv.empty()) return;
+void Scheduler::loadQueue(std::queue<Participant> &q, std::string csv)
+{
+    if (csv.empty())
+        return;
     std::stringstream ss(csv);
     std::string pair;
-    while (std::getline(ss, pair, ',')) {
+    while (std::getline(ss, pair, ','))
+    {
         size_t colonPos = pair.find(':');
-        if (colonPos != std::string::npos) {
+        if (colonPos != std::string::npos)
+        {
             Participant p;
             p.name = pair.substr(0, colonPos);
             p.pID = pair.substr(colonPos + 1);
@@ -198,310 +572,232 @@ void Scheduler::loadQueue(std::queue<Participant>& q, std::string csv) {
     }
 }
 
-bool Scheduler::saveToFile(const std::string& filename) const {
-    std::ofstream out(filename.c_str()); if (!out) return false;
-    out << "ROOMS\n";
-    std::unordered_map<std::string, ResourceInfo>::const_iterator it;
-    for (it = resources.begin(); it != resources.end(); ++it)
+bool Scheduler::saveToFile(const std::string &filename) const
+{
+    std::ofstream out(filename.c_str());
+    if (!out)
+        return false;
+
+    out << "ROOMS_COUNT|" << resources.size() << "\n";
+    for (std::unordered_map<std::string, ResourceInfo>::const_iterator it = resources.begin(); it != resources.end(); ++it)
+    {
         out << it->second.resourceID << "|" << it->second.name << "|" << it->second.capacity << "\n";
-    out << "EVENTS\n";
-    for (it = resources.begin(); it != resources.end(); ++it) {
-        std::vector<Event*> evs = it->second.tree.getAllEventsSorted();
-        for (size_t i = 0; i < evs.size(); i++)
-            out << evs[i]->eventID << "|" << evs[i]->name << "|" << evs[i]->date << "|" << evs[i]->resourceID << "|"
-                << minutesToTime(evs[i]->startMinutes) << "|" << minutesToTime(evs[i]->endMinutes) << "|"
-                << evs[i]->priority << "|" << evs[i]->maxParticipants << "|" 
-                << joinQueue(evs[i]->participantQueue) << "|" << joinQueue(evs[i]->waitlistQueue) << "\n";
+    }
+
+    out << "EVENTS_COUNT|" << ownedEvents.size() << "\n";
+    for (size_t i = 0; i < ownedEvents.size(); ++i)
+    {
+        Event *e = ownedEvents[i];
+        out << e->eventID << "|" << e->name << "|" << e->date << "|" << e->resourceID << "|"
+            << minutesToTime(e->startMinutes) << "|" << minutesToTime(e->endMinutes) << "|"
+            << e->priority << "|" << e->maxParticipants << "\n";
+
+        out << "PARTICIPANTS|";
+        std::queue<Participant> tempP = e->participantQueue;
+        while (!tempP.empty())
+        {
+            out << tempP.front().pID << ":" << tempP.front().name;
+            tempP.pop();
+            if (!tempP.empty())
+                out << ",";
+        }
+        out << "\n";
+
+        out << "WAITLIST|";
+        std::queue<Participant> tempW = e->waitlistQueue;
+        while (!tempW.empty())
+        {
+            out << tempW.front().pID << ":" << tempW.front().name;
+            tempW.pop();
+            if (!tempW.empty())
+                out << ",";
+        }
+        out << "\n";
     }
     return true;
 }
 
-bool Scheduler::loadFromFile(const std::string& filename) {
-    std::ifstream in(filename.c_str()); if (!in) return false;
-    clearAllEvents(); std::string line; std::getline(in, line);
-    while(std::getline(in, line) && line != "EVENTS") {
-        std::vector<std::string> p = split(line, '|'); if (p.size() < 3) continue;
-        ResourceInfo r; r.resourceID = p[0]; r.name = p[1]; r.capacity = std::atoi(p[2].c_str());
-        resources[r.resourceID] = r;
+bool Scheduler::loadFromFile(const std::string &filename)
+{
+    std::ifstream in(filename.c_str());
+    if (!in)
+        return false;
+
+    clearAllEvents();
+    std::string line;
+
+    if (!std::getline(in, line))
+        return false;
+    std::vector<std::string> header = split(line, '|');
+    if (header.size() < 2)
+        return false;
+
+    int roomCount = std::stoi(header[1]);
+    for (int i = 0; i < roomCount; ++i)
+    {
+        if (!std::getline(in, line))
+            break;
+        std::vector<std::string> p = split(line, '|');
+        if (p.size() >= 3)
+        {
+            resources[p[0]] = {p[0], p[1], std::stoi(p[2]), IntervalTree()};
+        }
     }
-    while(std::getline(in, line)) {
-        std::vector<std::string> p = split(line, '|'); if (p.size() < 8) continue;
-        Event* e = new Event();
-        e->eventID = p[0]; e->name = p[1]; e->date = p[2]; e->resourceID = p[3];
-        e->startMinutes = timeToMinutes(p[4]); e->endMinutes = timeToMinutes(p[5]);
-        e->priority = std::atoi(p[6].c_str()); e->maxParticipants = std::atoi(p[7].c_str());
-        if (p.size() >= 9) loadQueue(e->participantQueue, p[8]);
-        if (p.size() >= 10) loadQueue(e->waitlistQueue, p[9]);
+
+    if (!std::getline(in, line))
+        return true;
+    std::vector<std::string> eHeader = split(line, '|');
+    if (eHeader.size() < 2)
+        return true;
+
+    int eventCount = std::stoi(eHeader[1]);
+    int maxE = 1000, maxP = 5000;
+
+    for (int i = 0; i < eventCount; ++i)
+    {
+        if (!std::getline(in, line))
+            break;
+        std::vector<std::string> p = split(line, '|');
+        if (p.size() < 8)
+            continue;
+
+        Event *e = new Event();
+        e->eventID = p[0];
+        e->name = p[1];
+        e->date = p[2];
+        e->resourceID = p[3];
+        e->startMinutes = timeToMinutes(p[4]);
+        e->endMinutes = timeToMinutes(p[5]);
+        e->priority = std::stoi(p[6]);
+        e->maxParticipants = std::stoi(p[7]);
+
+        if (e->eventID.length() > 4)
+        {
+            int eNum = std::stoi(e->eventID.substr(4));
+            if (eNum >= maxE)
+                maxE = eNum + 1;
+        }
+
+        if (std::getline(in, line))
+        {
+            std::vector<std::string> parts = split(line, '|');
+            if (parts.size() >= 2 && !parts[1].empty())
+            {
+                std::vector<std::string> pList = split(parts[1], ',');
+                for (size_t j = 0; j < pList.size(); ++j)
+                {
+                    std::vector<std::string> pair = split(pList[j], ':');
+                    if (pair.size() >= 2)
+                    {
+                        e->participantQueue.push({pair[1], pair[0]});
+                        int pNum = std::stoi(pair[0].substr(2));
+                        if (pNum >= maxP)
+                            maxP = pNum + 1;
+                    }
+                }
+            }
+        }
+
+        if (std::getline(in, line))
+        {
+            std::vector<std::string> parts = split(line, '|');
+            if (parts.size() >= 2 && !parts[1].empty())
+            {
+                std::vector<std::string> wList = split(parts[1], ',');
+                for (size_t j = 0; j < wList.size(); ++j)
+                {
+                    std::vector<std::string> pair = split(wList[j], ':');
+                    if (pair.size() >= 2)
+                    {
+                        e->waitlistQueue.push({pair[1], pair[0]});
+                        int pNum = std::stoi(pair[0].substr(2));
+                        if (pNum >= maxP)
+                            maxP = pNum + 1;
+                    }
+                }
+            }
+        }
+
         ownedEvents.push_back(e);
-        if (resources.count(e->resourceID)) resources[e->resourceID].tree.insert(e);
+        if (resources.count(e->resourceID))
+        {
+            resources[e->resourceID].tree.insert(e);
+        }
     }
+
+    nextEventID = maxE;
+    nextParticipantID = maxP;
     return true;
 }
 
-void Scheduler::printSchedule() const {
-    std::unordered_map<std::string, ResourceInfo>::const_iterator it;
-    for (it = resources.begin(); it != resources.end(); ++it) {
+void Scheduler::printSchedule() const
+{
+    for (std::unordered_map<std::string, ResourceInfo>::const_iterator it = resources.begin(); it != resources.end(); ++it)
+    {
         std::cout << "\n[" << it->second.resourceID << " " << it->second.name << "]\n";
-        std::vector<Event*> evs = it->second.tree.getAllEventsSorted();
-        for (size_t i = 0; i < evs.size(); i++) {
-            std::cout << evs[i]->eventID << " | " << evs[i]->date << " | " << minutesToTime(evs[i]->startMinutes) 
-                      << "-" << minutesToTime(evs[i]->endMinutes) << " | P:" << evs[i]->priority << "\n";
+        std::vector<Event *> evs = it->second.tree.getAllEventsSorted();
+        for (size_t i = 0; i < evs.size(); ++i)
+        {
+            Event *e = evs[i];
+            std::cout << e->eventID << " | " << e->date << " | "
+                      << minutesToTime(e->startMinutes) << "-" << minutesToTime(e->endMinutes)
+                      << " | P:" << e->priority << "\n";
         }
     }
 }
 
-void Scheduler::printRooms() const {
-    std::unordered_map<std::string, ResourceInfo>::const_iterator it;
-    for (it = resources.begin(); it != resources.end(); ++it)
+void Scheduler::printRooms() const
+{
+    for (std::unordered_map<std::string, ResourceInfo>::const_iterator it = resources.begin(); it != resources.end(); ++it)
+    {
         std::cout << it->second.resourceID << " | cap:" << it->second.capacity << "\n";
+    }
 }
 
-Event* Scheduler::findEventByID(std::string id) {
-    for (size_t i = 0; i < ownedEvents.size(); i++) {
-        if (ownedEvents[i]->eventID == id) return ownedEvents[i];
+Event *Scheduler::findEventByID(std::string id)
+{
+    for (size_t i = 0; i < ownedEvents.size(); ++i)
+    {
+        if (ownedEvents[i]->eventID == id)
+            return ownedEvents[i];
     }
     return NULL;
 }
 
-void Scheduler::deleteEventUI() {
-    std::string id;
-    std::cout << "Enter Event ID to delete: ";
-    std::cin >> id;
+void Scheduler::syncCounters()
+{
+    int maxE = 1000;
+    int maxP = 5000;
 
-    bool found = false;
-    for (size_t i = 0; i < ownedEvents.size(); i++) {
-        if (ownedEvents[i]->eventID == id) {
-            Event* e = ownedEvents[i];
-            if (resources.count(e->resourceID)) {
-                resources[e->resourceID].tree.remove(e);
-            }
-            ownedEvents.erase(ownedEvents.begin() + i);
-            delete e;
-            found = true;
-            std::cout << "Event deleted successfully.\n";
-            break;
+    for (size_t i = 0; i < ownedEvents.size(); ++i)
+    {
+        std::string eID = ownedEvents[i]->eventID;
+        int eNum = std::stoi(eID.substr(4));
+        if (eNum >= maxE)
+            maxE = eNum + 1;
+
+        std::queue<Participant> q = ownedEvents[i]->participantQueue;
+        while (!q.empty())
+        {
+            int pNum = std::stoi(q.front().pID.substr(2));
+            if (pNum >= maxP)
+                maxP = pNum + 1;
+            q.pop();
         }
     }
-    if (!found) std::cout << "Event ID not found.\n";
+    nextEventID = maxE;
+    nextParticipantID = maxP;
 }
 
-void Scheduler::registerParticipantUI() {
-    std::string eventId, userName, userId;
-    std::cout << "Enter Event ID: ";
-    std::cin >> eventId;
-    std::cout << "Enter Name: ";
-    std::cin.ignore();
-    std::getline(std::cin, userName);
-    std::cout << "Enter your ID : ";
-    std::getline(std::cin, userId);
-
-    Event* target = findEventByID(eventId);
-    if (!target) return;
-
-    Participant p;
-    p.name = userName;
-    p.pID = userId;
-
-    if (target->participantQueue.size() < (size_t)target->maxParticipants) {
-        target->participantQueue.push(p);
-        std::cout << "Registered successfully.\n";
-    } else {
-        target->waitlistQueue.push(p);
-        std::cout << "Event full. Added to waitlist.\n";
-    }
-}
-
-void Scheduler::withdrawParticipantUI() {
-    std::string eventId, userId;
-    std::cout << "Enter Event ID: ";
-    std::cin >> eventId;
-    std::cout << "Enter your Unique ID to verify identity: ";
-    std::cin >> userId;
-
-    Event* target = findEventByID(eventId);
-    if (!target) return;
-
-    std::queue<Participant> tempQ;
-    bool found = false;
-
-    while (!target->participantQueue.empty()) {
-        Participant current = target->participantQueue.front();
-        target->participantQueue.pop();
-
-        if (current.pID == userId && !found) {
-            found = true;
-            std::cout << "Withdrew " << current.name << " (ID: " << userId << ")\n";
-        } else {
-            tempQ.push(current);
-        }
-    }
-    target->participantQueue = tempQ;
-
-    if (!found) {
-        std::queue<Participant> tempW;
-        while (!target->waitlistQueue.empty()) {
-            Participant current = target->waitlistQueue.front();
-            target->waitlistQueue.pop();
-
-            if (current.pID == userId && !found) {
-                found = true;
-                std::cout << "Removed from waitlist.\n";
-            } else {
-                tempW.push(current);
-            }
-        }
-        target->waitlistQueue = tempW;
-    } else if (!target->waitlistQueue.empty()) {
-        target->participantQueue.push(target->waitlistQueue.front());
-        std::cout << target->waitlistQueue.front().name << " moved from waitlist to registered.\n";
-        target->waitlistQueue.pop();
-    }
-
-    if (!found) std::cout << "Error: ID not found in this event.\n";
-}
-
-void Scheduler::undo() {
-    if (undoStack.empty()) {
-        std::cout << "Nothing to undo.\n";
-        return;
-    }
-    Event* e = undoStack.top();
-    undoStack.pop();
-    redoStack.push(e);
-
-    if (resources.count(e->resourceID)) {
-        resources[e->resourceID].tree.remove(e);
-    }
-    std::cout << "Undo successful: Removed " << e->name << ".\n";
-}
-
-void Scheduler::redo() {
-    if (redoStack.empty()) {
-        std::cout << "Nothing to redo.\n";
-        return;
-    }
-    Event* e = redoStack.top();
-    redoStack.pop();
-    undoStack.push(e);
-
-    if (resources.count(e->resourceID)) {
-        resources[e->resourceID].tree.insert(e);
-    }
-    std::cout << "Redo successful: Restored " << e->name << ".\n";
-}
-
-void Scheduler::addRoomUI() {
-    std::string id, name;
-    int cap;
-
-    std::cout << "\n--- ADD NEW ROOM ---\n";
-    std::cout << "Enter Room ID (e.g., R4): ";
-    std::cin >> id;
-    
-    if (resources.find(id) != resources.end()) {
-        std::cout << "Error: Room ID " << id << " already exists.\n";
-        return;
-    }
-
-    std::cout << "Enter Room Name: ";
-    std::cin.ignore();
-    std::getline(std::cin, name);
-    std::cout << "Enter Capacity: ";
-    std::cin >> cap;
-
-    if (cap <= 0) {
-        std::cout << "Error: Capacity must be a positive number.\n";
-        return;
-    }
-
-    ResourceInfo newRoom;
-    newRoom.resourceID = id;
-    newRoom.name = name;
-    newRoom.capacity = cap;
-
-    resources[id] = newRoom;
-    std::cout << "Room " << id << " added successfully.\n";
-}
-
-void Scheduler::deleteRoomUI() {
-    std::string id;
-    std::cout << "Enter Room ID to delete: ";
-    std::cin >> id;
-
-    if (resources.find(id) == resources.end()) {
-        std::cout << "Error: Room ID " << id << " not found.\n";
-        return;
-    }
-
-    bool hasEvents = false;
-    for (size_t i = 0; i < ownedEvents.size(); i++) {
-        if (ownedEvents[i]->resourceID == id) {
-            hasEvents = true;
-            break;
-        }
-    }
-
-    if (hasEvents) {
-        std::cout << "Error: Cannot delete room. There are events scheduled in this room.\n";
-        std::cout << "Please delete or reschedule those events first.\n";
-        return;
-    }
-
-    resources.erase(id);
-    std::cout << "Room " << id << " deleted successfully.\n";
-}
-
-
-void Scheduler::printUtilizationReportUI() const {
-    std::string targetDate;
-    std::cout << "Enter Date (YYYY-MM-DD) or type 'all': ";
-    std::cin >> targetDate;
-
-    std::cout << "\nUTILIZATION REPORT (" << targetDate << ")\n";
-    std::cout << "===============================================================\n";
-    std::cout << "Room ID    | Room Name       | Mins Used | Dates | Utilization%\n";
-    std::cout << "-----------|-----------------|-----------|-------|-------------\n";
-
-    for (auto const& pair : resources) {
-        const ResourceInfo& room = pair.second;
-        std::vector<Event*> events = room.tree.getAllEventsSorted();
-        
-        int totalMins = 0;
-        std::set<std::string> distinctDates;
-
-        for (size_t i = 0; i < events.size(); i++) {
-            if (targetDate == "all" || events[i]->date == targetDate) {
-                totalMins += (events[i]->endMinutes - events[i]->startMinutes);
-                distinctDates.insert(events[i]->date);
-            }
-        }
-
-        int datesCount = distinctDates.size();
-        double percentage = 0.0;
-        
-        if (datesCount > 0) {
-            percentage = (totalMins / (static_cast<double>(datesCount) * 1440.0)) * 100.0;
-        }
-
-        std::cout << room.resourceID;
-        for(int s=0; s < (11 - (int)room.resourceID.length()); s++) std::cout << " ";
-        std::cout << "| ";
-
-        std::cout << room.name;
-        for(int s=0; s < (16 - (int)room.name.length()); s++) std::cout << " ";
-        std::cout << "| ";
-
-        std::string mStr = std::to_string(totalMins);
-        std::cout << mStr;
-        for(int s=0; s < (10 - (int)mStr.length()); s++) std::cout << " ";
-        std::cout << "| ";
-
-        std::string dStr = std::to_string(datesCount);
-        std::cout << dStr;
-        for(int s=0; s < (6 - (int)dStr.length()); s++) std::cout << " ";
-        std::cout << "| ";
-
-        std::cout << (int)percentage << "%\n";
-    }
-    std::cout << "===============================================================\n";
+void Scheduler::clearAllEvents()
+{
+    for (auto &pair : resources)
+        pair.second.tree.root = NULL;
+    for (size_t i = 0; i < ownedEvents.size(); ++i)
+        delete ownedEvents[i];
+    ownedEvents.clear();
+    while (!undoStack.empty())
+        undoStack.pop();
+    while (!redoStack.empty())
+        redoStack.pop();
 }

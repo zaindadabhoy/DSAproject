@@ -2,15 +2,24 @@
 #define INTERVALTREE_H
 
 #include "IntervalTreeNode.h"
+#include <vector>
 
-class IntervalTree {
+class IntervalTree
+{
 public:
-    IntervalTreeNode* root;
+    IntervalTreeNode *root;
+
     IntervalTree();
-    void insert(Event* e);
-    void remove(Event* e);
-    std::vector<Event*> findOverlaps(Event* query);
-    std::vector<Event*> getAllEventsSorted() const;
+    ~IntervalTree();
+
+    void insert(Event *e);
+    void remove(Event *e);
+    std::vector<Event *> findOverlaps(Event *query);
+    std::vector<Event *> getAllEventsSorted() const;
+
+private:
+    void updateMaxEnd(IntervalTreeNode *node);
+    void deleteTree(IntervalTreeNode *node);
 };
 
 #endif

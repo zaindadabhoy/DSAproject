@@ -2,21 +2,20 @@
 #define INTERVALTREENODE_H
 
 #include "Event.h"
-#include <vector>
 
-class IntervalTreeNode {
+class IntervalTreeNode
+{
 public:
-    Event* event;
+    Event *event;
     int maxEnd;
     IntervalTreeNode *left, *right, *parent;
 
-    IntervalTreeNode(Event* e);
-    
-    static IntervalTreeNode* insert(IntervalTreeNode* root, Event* e);
-    static IntervalTreeNode* remove(IntervalTreeNode* root, Event* e);
-    static void findOverlaps(IntervalTreeNode* root, Event* query, std::vector<Event*>& out);
-    static void inorderCollect(IntervalTreeNode* root, std::vector<Event*>& out);
-    static void updateMaxEndIterative(IntervalTreeNode* node);
+    IntervalTreeNode(Event *e)
+    {
+        event = e;
+        maxEnd = e->endMinutes;
+        left = right = parent = nullptr;
+    }
 };
 
 #endif
