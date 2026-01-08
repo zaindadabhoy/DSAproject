@@ -124,7 +124,7 @@ Event Nodes
 
 ### Compile
 
-g++ main.cpp Scheduler.cpp IntervalTree.cpp IntervalTreeNode.cpp -o scheduler
+g++ main.cpp Scheduler.cpp IntervalTree.cpp -o scheduler
 
 
 ### Run
