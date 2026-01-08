@@ -124,7 +124,7 @@ void Scheduler::scheduleEventUI()
         return;
     }
 
-    std::cout << "Priority (1-3): ";
+    std::cout << "Priority (1-3):\n 1 for Workshops / Society events\n 2 for Seminars / Competition\n 3 for Lectures\nPriority: ";
     std::cin >> e->priority;
     std::cout << "Capacity: ";
     std::cin >> e->maxParticipants;
